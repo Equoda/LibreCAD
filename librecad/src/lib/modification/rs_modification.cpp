@@ -1649,9 +1649,9 @@ RS_Polyline* RS_Modification::polylineTrim(RS_Polyline& polyline,
  * modification.
  */
 bool RS_Modification::move(RS_MoveData& data) {
+
 	if (!container) {
-        RS_DEBUG->print(RS_Debug::D_WARNING,
-                        "RS_Modification::move: no valid container");
+        RS_DEBUG->print(RS_Debug::D_ERROR,"RS_Modification::move: no valid container");
         return false;
     }
 
@@ -1662,17 +1662,22 @@ bool RS_Modification::move(RS_MoveData& data) {
     }
 
     // Create new entites
-    for (int num=1;
-            num<=data.number || (data.number==0 && num<=1);
-            num++) {
-        // too slow:
-        //for (unsigned i=0; i<container->count(); ++i) {
-		//RS_Entity* e = container->entityAt(i);
-		for(auto e: *container){
-			if (e && e->isSelected()) {
-                RS_Entity* ec = e->clone();
+    for(auto e: *container) {
 
+        if (!e) {
+            RS_DEBUG->print(RS_Debug::D_NOTICE,"RS_Modification::move: nulllptr entity in list");
+            continue;
+        }
+
+        // Move only selected shapes
+        if (e->isSelected()) {
+
+            // Do move at least once. Use do/while due to data.number=0 for a single copy with originals are to remove
+            int num = 1;
+            do {
+                RS_Entity* ec = e->clone();
                 ec->move(data.offset*num);
+
                 if (data.useCurrentLayer) {
                     ec->setLayerToActive();
                 }
@@ -1682,14 +1687,23 @@ bool RS_Modification::move(RS_MoveData& data) {
                 if (ec->rtti()==RS2::EntityInsert) {
                     ((RS_Insert*)ec)->update();
                 }
+
                 // since 2.0.4.0: keep selection
                 ec->setSelected(true);
-				addList.push_back(ec);
-            }
+                addList.push_back(ec);
+
+                num++;
+            } while (num<=data.number);
         }
     }
 
-    deselectOriginals(data.number==0);
+    // Remove originals if requested
+    if (data.number==0) {
+        deselectOriginals(true);
+    } else {
+        deselectOriginals(false);
+    }
+
     addNewEntities(addList);
 
     if (document && handleUndo) {
